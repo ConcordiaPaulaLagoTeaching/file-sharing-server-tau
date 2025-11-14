@@ -7,17 +7,25 @@ public class FNode {
     private int blockIndex;
     private int next;
 
-    public FNode(int blockIndex) {
-        this.blockIndex = blockIndex;
-        this.next = -1;
-    }
-
+    // Default constructor
     public FNode() {
         this.blockIndex = -1;
         this.next = -1;
     }
 
-    
+    // One-argument constructor
+    public FNode(int blockIndex) {
+        this.blockIndex = blockIndex;
+        this.next = -1;
+    }
+
+    // Two-argument constructor
+    public FNode(int blockIndex, int next) {
+        this.blockIndex = blockIndex;
+        this.next = next;
+    }
+
+    // Getters
     public int getBlockIndex() {
         return blockIndex;
     }
@@ -26,7 +34,7 @@ public class FNode {
         return next;
     }
 
-    
+    // Setters
     public void setBlockIndex(int blockIndex) {
         this.blockIndex = blockIndex;
     }
@@ -35,13 +43,13 @@ public class FNode {
         this.next = next;
     }
 
-    
+    // Reset node
     public void reset() {
         this.blockIndex = -1;
         this.next = -1;
     }
 
-
+    // Serialize to bytes
     public byte[] toBytes() {
         ByteBuffer buffer = ByteBuffer.allocate(8);
         buffer.putInt(blockIndex);
@@ -49,7 +57,7 @@ public class FNode {
         return buffer.array();
     }
 
-    
+    // Deserialize from bytes
     public static FNode fromBytes(byte[] data) {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         int blockIndex = buffer.getInt();
