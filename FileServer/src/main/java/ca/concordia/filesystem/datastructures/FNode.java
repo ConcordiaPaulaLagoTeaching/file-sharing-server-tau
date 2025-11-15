@@ -58,12 +58,19 @@ public class FNode {
     }
 
     // Deserialize from bytes
-    public static FNode fromBytes(byte[] data) {
-        ByteBuffer buffer = ByteBuffer.wrap(data);
+    public static FNode fromBytes(byte[] bytes) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
         int blockIndex = buffer.getInt();
         int next = buffer.getInt();
+
+        // Treat zeroed node as empty
+        if (blockIndex == 0 && next == 0) {
+            return new FNode(); // blockIndex = -1, next = -1
+        }
+
         return new FNode(blockIndex, next);
     }
+
 
     @Override
     public String toString() {
