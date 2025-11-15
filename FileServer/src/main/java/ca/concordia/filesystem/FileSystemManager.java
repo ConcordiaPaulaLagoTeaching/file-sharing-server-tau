@@ -26,20 +26,25 @@ public class FileSystemManager {
         try {
             disk = new RandomAccessFile(filename, "rw");
 
-            
             fentries = new FEntry[MAXFILES];
             fnodes = new FNode[MAXBLOCKS];
             freeBlockList = new boolean[MAXBLOCKS];
 
-            
-            int metadataBytes = (MAXFILES * 15) + (MAXBLOCKS * 8); // Estimate: FEntry = 15 bytes, FNode = 8 bytes
+            // Initialize fnodes[] with default unused nodes
+            for (int i = 0; i < MAXBLOCKS; i++) {
+                fnodes[i] = new FNode(); // blockIndex = -1, next = -1
+            }
+
+            // Mark metadata blocks as used
+            int metadataBytes = (MAXFILES * 15) + (MAXBLOCKS * 8);
             int metadataBlocks = (int) Math.ceil((double) metadataBytes / BLOCK_SIZE);
             for (int i = 0; i < metadataBlocks; i++) {
                 freeBlockList[i] = true;
             }
 
-            
+            // Load metadata from disk
             loadMetadata();
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize file system", e);
         }
@@ -47,15 +52,24 @@ public class FileSystemManager {
 
     private void loadMetadata() throws Exception {
         disk.seek(0);
+
         for (int i = 0; i < MAXFILES; i++) {
             byte[] entryBytes = new byte[15];
             disk.read(entryBytes);
             fentries[i] = FEntry.fromBytes(entryBytes);
         }
+
         for (int i = 0; i < MAXBLOCKS; i++) {
             byte[] nodeBytes = new byte[8];
             disk.read(nodeBytes);
-            fnodes[i] = FNode.fromBytes(nodeBytes);
+            FNode node = FNode.fromBytes(nodeBytes);
+
+            // Validate node before accepting it
+            if (node.getBlockIndex() >= 0 && node.getBlockIndex() < MAXBLOCKS) {
+                fnodes[i] = node;
+            } else {
+                fnodes[i] = new FNode(); // fallback to clean node
+            }
         }
     }
 
@@ -136,7 +150,7 @@ public class FileSystemManager {
                     for (int i = 0; i < blocksNeeded; i++) {
                         int blockIndex = freeBlocks.get(i);
                         int nodeIndex = findFreeNode();
-                        fnodes[nodeIndex] = new FNode(blockIndex);
+                        fnodes[nodeIndex] = new FNode(blockIndex); // uses one-arg constructor
                         if (prevNode != -1) {
                             fnodes[prevNode].setNext(nodeIndex);
                         } else {
@@ -199,7 +213,10 @@ public class FileSystemManager {
 
     private int findFreeNode() throws Exception {
         for (int i = 0; i < fnodes.length; i++) {
-            if (fnodes[i].getBlockIndex() < 0) return i;
+            System.out.println("Checking node " + i + ": " + fnodes[i]); // Debug line
+            if (fnodes[i] == null || fnodes[i].getBlockIndex() < 0) {
+                return i;
+            }
         }
         throw new Exception("ERROR: no free nodes available");
     }
