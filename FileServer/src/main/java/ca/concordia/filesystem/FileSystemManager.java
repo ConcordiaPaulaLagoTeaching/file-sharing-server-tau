@@ -4,24 +4,29 @@ import ca.concordia.filesystem.datastructures.FEntry;
 import ca.concordia.filesystem.datastructures.FNode;
 
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class FileSystemManager {
 
+    // Constants defining file system limits
     private final int MAXFILES = 5;
     private final int MAXBLOCKS = 10;
     private final int BLOCK_SIZE = 128;
 
+    // Core file system structures
     private final RandomAccessFile disk;
     private final FEntry[] fentries;
     private final FNode[] fnodes;
     private final boolean[] freeBlockList;
 
-    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    // Synchronization primitives
+    private final ReentrantReadWriteLock metadataLock = new ReentrantReadWriteLock(); // protects fentries[] and freeBlockList[]
+    private final ConcurrentHashMap<String, ReentrantReadWriteLock> fileLocks = new ConcurrentHashMap<>(); // per-file locks
 
+    // Constructor: initializes disk, metadata, and in-memory structures
     public FileSystemManager(String filename, int totalSize) {
         try {
             disk = new RandomAccessFile(filename, "rw");
@@ -30,26 +35,23 @@ public class FileSystemManager {
             fnodes = new FNode[MAXBLOCKS];
             freeBlockList = new boolean[MAXBLOCKS];
 
-            // Initialize fnodes[] with default unused nodes
             for (int i = 0; i < MAXBLOCKS; i++) {
-                fnodes[i] = new FNode(); // blockIndex = -1, next = -1
+                fnodes[i] = new FNode();
             }
 
-            // Mark metadata blocks as used
             int metadataBytes = (MAXFILES * 15) + (MAXBLOCKS * 8);
             int metadataBlocks = (int) Math.ceil((double) metadataBytes / BLOCK_SIZE);
             for (int i = 0; i < metadataBlocks; i++) {
                 freeBlockList[i] = true;
             }
 
-            // Load metadata from disk
             loadMetadata();
-
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize file system", e);
         }
     }
 
+    // Loads metadata from disk into memory (fentries and fnodes)
     private void loadMetadata() throws Exception {
         disk.seek(0);
 
@@ -57,22 +59,20 @@ public class FileSystemManager {
             byte[] entryBytes = new byte[15];
             disk.read(entryBytes);
             fentries[i] = FEntry.fromBytes(entryBytes);
+            if (!fentries[i].getFilename().isEmpty()) {
+                fileLocks.put(fentries[i].getFilename(), new ReentrantReadWriteLock());
+            }
         }
 
         for (int i = 0; i < MAXBLOCKS; i++) {
             byte[] nodeBytes = new byte[8];
             disk.read(nodeBytes);
             FNode node = FNode.fromBytes(nodeBytes);
-
-            // Validate node before accepting it
-            if (node.getBlockIndex() >= 0 && node.getBlockIndex() < MAXBLOCKS) {
-                fnodes[i] = node;
-            } else {
-                fnodes[i] = new FNode(); // fallback to clean node
-            }
+            fnodes[i] = (node.getBlockIndex() >= 0 && node.getBlockIndex() < MAXBLOCKS) ? node : new FNode();
         }
     }
 
+    // Saves metadata (fentries and fnodes) back to disk
     private void saveMetadata() throws Exception {
         disk.seek(0);
         for (FEntry entry : fentries) {
@@ -83,8 +83,9 @@ public class FileSystemManager {
         }
     }
 
+    // Creates a new file entry and initializes its lock
     public void createFile(String filename) throws Exception {
-        rwLock.writeLock().lock();
+        metadataLock.writeLock().lock();
         try {
             for (FEntry entry : fentries) {
                 if (entry.getFilename().equals(filename)) {
@@ -97,18 +98,24 @@ public class FileSystemManager {
                     fentries[i].setFilename(filename);
                     fentries[i].setFilesize((short) 0);
                     fentries[i].setFirstBlock((short) -1);
+                    fileLocks.put(filename, new ReentrantReadWriteLock());
                     saveMetadata();
                     return;
                 }
             }
+
             throw new Exception("ERROR: no space for new file");
         } finally {
-            rwLock.writeLock().unlock();
+            metadataLock.writeLock().unlock();
         }
     }
 
+    // Deletes a file and frees its blocks and metadata
     public void deleteFile(String filename) throws Exception {
-        rwLock.writeLock().lock();
+        ReentrantReadWriteLock lock = fileLocks.get(filename);
+        if (lock == null) throw new Exception("ERROR: file " + filename + " does not exist");
+
+        lock.writeLock().lock();
         try {
             for (FEntry entry : fentries) {
                 if (entry.getFilename().equals(filename)) {
@@ -121,18 +128,23 @@ public class FileSystemManager {
                         block = fnodes[block].getNext();
                     }
                     entry.reset();
+                    fileLocks.remove(filename);
                     saveMetadata();
                     return;
                 }
             }
             throw new Exception("ERROR: file " + filename + " does not exist");
         } finally {
-            rwLock.writeLock().unlock();
+            lock.writeLock().unlock();
         }
     }
 
+    // Writes content to a file, allocating new blocks and linking them
     public void writeFile(String filename, byte[] contents) throws Exception {
-        rwLock.writeLock().lock();
+        ReentrantReadWriteLock lock = fileLocks.get(filename);
+        if (lock == null) throw new Exception("ERROR: file " + filename + " does not exist");
+
+        lock.writeLock().lock();
         try {
             int blocksNeeded = (int) Math.ceil((double) contents.length / BLOCK_SIZE);
             List<Integer> freeBlocks = new ArrayList<>();
@@ -150,7 +162,7 @@ public class FileSystemManager {
                     for (int i = 0; i < blocksNeeded; i++) {
                         int blockIndex = freeBlocks.get(i);
                         int nodeIndex = findFreeNode();
-                        fnodes[nodeIndex] = new FNode(blockIndex); // uses one-arg constructor
+                        fnodes[nodeIndex] = new FNode(blockIndex);
                         if (prevNode != -1) {
                             fnodes[prevNode].setNext(nodeIndex);
                         } else {
@@ -167,12 +179,16 @@ public class FileSystemManager {
             }
             throw new Exception("ERROR: file " + filename + " does not exist");
         } finally {
-            rwLock.writeLock().unlock();
+            lock.writeLock().unlock();
         }
     }
 
+    // Reads a file's contents by following its block chain
     public byte[] readFile(String filename) throws Exception {
-        rwLock.readLock().lock();
+        ReentrantReadWriteLock lock = fileLocks.get(filename);
+        if (lock == null) throw new Exception("ERROR: file " + filename + " does not exist");
+
+        lock.readLock().lock();
         try {
             for (FEntry entry : fentries) {
                 if (entry.getFilename().equals(filename)) {
@@ -192,12 +208,13 @@ public class FileSystemManager {
             }
             throw new Exception("ERROR: file " + filename + " does not exist");
         } finally {
-            rwLock.readLock().unlock();
+            lock.readLock().unlock();
         }
     }
 
+    // Lists all non-empty filenames
     public String[] listFiles() {
-        rwLock.readLock().lock();
+        metadataLock.readLock().lock();
         try {
             List<String> files = new ArrayList<>();
             for (FEntry entry : fentries) {
@@ -207,13 +224,13 @@ public class FileSystemManager {
             }
             return files.toArray(new String[0]);
         } finally {
-            rwLock.readLock().unlock();
+            metadataLock.readLock().unlock();
         }
     }
 
+    // Finds the index of a free FNode
     private int findFreeNode() throws Exception {
         for (int i = 0; i < fnodes.length; i++) {
-            System.out.println("Checking node " + i + ": " + fnodes[i]); // Debug line
             if (fnodes[i] == null || fnodes[i].getBlockIndex() < 0) {
                 return i;
             }
@@ -221,12 +238,14 @@ public class FileSystemManager {
         throw new Exception("ERROR: no free nodes available");
     }
 
+    // Writes a block of data to the specified block index on disk
     private void writeBlock(int blockIndex, byte[] data, int offset) throws Exception {
         disk.seek(blockIndex * BLOCK_SIZE);
         int length = Math.min(BLOCK_SIZE, data.length - offset);
         disk.write(data, offset, length);
     }
 
+    // Overwrites a block with zeroed bytes (used during deletion)
     private void overwriteBlock(int blockIndex) throws Exception {
         disk.seek(blockIndex * BLOCK_SIZE);
         disk.write(new byte[BLOCK_SIZE]);
