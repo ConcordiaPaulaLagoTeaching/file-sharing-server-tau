@@ -8,6 +8,10 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+/**
+ * FileServer accepts client connections and dispatches file system commands.
+ * Each client is handled in a separate thread.
+ */
 public class FileServer {
 
     private final FileSystemManager fsManager;
@@ -18,6 +22,8 @@ public class FileServer {
         this.port = port;
     }
 
+    
+    //Starts the server and listens for incoming client connections.
     public void start() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Server started. Listening on port " + port + "...");
@@ -26,7 +32,7 @@ public class FileServer {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Connected to client: " + clientSocket);
 
-                // Handle each client in a new thread
+                // Spawn a new thread for each client
                 new Thread(() -> handleClient(clientSocket)).start();
             }
         } catch (Exception e) {
@@ -35,6 +41,8 @@ public class FileServer {
         }
     }
 
+    
+    //Handles a single client connection in a dedicated thread.
     private void handleClient(Socket clientSocket) {
         try (
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
@@ -43,7 +51,7 @@ public class FileServer {
             String line;
             while ((line = reader.readLine()) != null) {
                 System.out.println("Received from client: " + line);
-                String[] parts = line.split(" ", 3); // max 3 parts: command, filename, content
+                String[] parts = line.trim().split(" ", 3); // max 3 parts: command, filename, content
                 String command = parts[0].toUpperCase();
 
                 try {
@@ -52,7 +60,7 @@ public class FileServer {
                             if (parts.length < 2) {
                                 writer.println("ERROR: Missing filename");
                             } else if (parts[1].length() > 11) {
-                                writer.println("ERROR: filename too large");
+                                writer.println("ERROR: Filename too long (max 11 chars)");
                             } else {
                                 fsManager.createFile(parts[1]);
                                 writer.println("SUCCESS: File '" + parts[1] + "' created.");
