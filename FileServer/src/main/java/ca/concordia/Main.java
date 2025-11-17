@@ -2,6 +2,10 @@ package ca.concordia;
 
 import ca.concordia.server.FileServer;
 
+/*
+ * TODO: Review and comment code properly
+ */
+
 public class Main {
     public static void main(String[] args) {
         System.out.printf("Hello and welcome!");

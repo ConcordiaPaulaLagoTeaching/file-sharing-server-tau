@@ -8,6 +8,10 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+/*
+ * TODO: Review and comment code properly
+ */
+
 /**
  * FileServer accepts client connections and dispatches file system commands.
  * Each client is handled in a separate thread.
