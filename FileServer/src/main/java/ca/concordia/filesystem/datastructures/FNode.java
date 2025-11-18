@@ -2,9 +2,6 @@ package ca.concordia.filesystem.datastructures;
 
 import java.nio.ByteBuffer;
 
-/*
- * TODO: Review and comment code properly
- */
 
 public class FNode {
 

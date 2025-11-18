@@ -2,9 +2,6 @@ package ca.concordia.filesystem.datastructures;
 
 import java.nio.ByteBuffer;
 
-/*
- * TODO: Review and comment code properly
- */
 
 public class FEntry {
 
@@ -18,10 +15,11 @@ public class FEntry {
         this.firstBlock = firstBlock;
     }
 
+    // create empty entry (used for uninitialized slots)
     public FEntry() {
         this.filename = "";
         this.filesize = 0;
-        this.firstBlock = -1;
+        this.firstBlock = -1;   // no data block are linked
     }
 
     // Getters
@@ -56,14 +54,14 @@ public class FEntry {
         this.firstBlock = firstBlock;
     }
 
-    
+    // clear entry (used during file deletion)
     public void reset() {
         this.filename = "";
         this.filesize = 0;
         this.firstBlock = -1;
     }
 
-    
+    // Serialization: converts FEntry into 15-byte array
     public byte[] toBytes() {
         ByteBuffer buffer = ByteBuffer.allocate(15);
         byte[] nameBytes = new byte[11];
@@ -75,7 +73,7 @@ public class FEntry {
         return buffer.array();
     }
 
-    
+    //Deserialization: reconstructs FEntry from 15-byte array (Used to load metadata from disk)
     public static FEntry fromBytes(byte[] data) {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         byte[] nameBytes = new byte[11];

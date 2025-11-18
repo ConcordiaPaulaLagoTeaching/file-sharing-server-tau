@@ -8,9 +8,6 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 
-/*
- * TODO: Review and comment code properly
- */
 
 /**
  * FileServer accepts client connections and dispatches file system commands.
@@ -21,6 +18,7 @@ public class FileServer {
     private final FileSystemManager fsManager;
     private final int port;
 
+    // Constructor: create new instance of FileSystemManager
     public FileServer(int port, String fileSystemName, int totalSize) {
         this.fsManager = new FileSystemManager(fileSystemName, totalSize);
         this.port = port;

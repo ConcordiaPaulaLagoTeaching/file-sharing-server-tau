@@ -9,9 +9,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-/*
- * TODO: Review and comment code properly
- */
 
 public class FileSystemManager {
 
@@ -39,17 +36,19 @@ public class FileSystemManager {
             fnodes = new FNode[MAXBLOCKS];
             freeBlockList = new boolean[MAXBLOCKS];
 
+            // initialize each node
             for (int i = 0; i < MAXBLOCKS; i++) {
                 fnodes[i] = new FNode();
             }
 
+            // reserve block for metadata
             int metadataBytes = (MAXFILES * 15) + (MAXBLOCKS * 8);
             int metadataBlocks = (int) Math.ceil((double) metadataBytes / BLOCK_SIZE);
             for (int i = 0; i < metadataBlocks; i++) {
                 freeBlockList[i] = true;
             }
 
-            loadMetadata();
+            loadMetadata();     // call
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize file system", e);
         }
@@ -59,6 +58,7 @@ public class FileSystemManager {
     private void loadMetadata() throws Exception {
         disk.seek(0);
 
+        // reach each file entry and initialize its lock if it exists
         for (int i = 0; i < MAXFILES; i++) {
             byte[] entryBytes = new byte[15];
             disk.read(entryBytes);
@@ -68,6 +68,7 @@ public class FileSystemManager {
             }
         }
 
+        // read each node and validate its block index
         for (int i = 0; i < MAXBLOCKS; i++) {
             byte[] nodeBytes = new byte[8];
             disk.read(nodeBytes);
@@ -89,14 +90,15 @@ public class FileSystemManager {
 
     // Creates a new file entry and initializes its lock
     public void createFile(String filename) throws Exception {
-        metadataLock.writeLock().lock();
+        metadataLock.writeLock().lock();    // lock (metadata)
         try {
             for (FEntry entry : fentries) {
-                if (entry.getFilename().equals(filename)) {
+                if (entry.getFilename().equals(filename)) {     // check duplicate file
                     throw new Exception("ERROR: file already exists");
                 }
             }
 
+            // finds an empty entry slot and initializes it
             for (int i = 0; i < fentries.length; i++) {
                 if (fentries[i].getFilename().isEmpty()) {
                     fentries[i].setFilename(filename);
@@ -110,7 +112,7 @@ public class FileSystemManager {
 
             throw new Exception("ERROR: no space for new file");
         } finally {
-            metadataLock.writeLock().unlock();
+            metadataLock.writeLock().unlock();  // remove lock (metadata)
         }
     }
 
@@ -119,7 +121,7 @@ public class FileSystemManager {
         ReentrantReadWriteLock lock = fileLocks.get(filename);
         if (lock == null) throw new Exception("ERROR: file " + filename + " does not exist");
 
-        lock.writeLock().lock();
+        lock.writeLock().lock();    // lock
         try {
             for (FEntry entry : fentries) {
                 if (entry.getFilename().equals(filename)) {
@@ -139,7 +141,7 @@ public class FileSystemManager {
             }
             throw new Exception("ERROR: file " + filename + " does not exist");
         } finally {
-            lock.writeLock().unlock();
+            lock.writeLock().unlock();  // remove lock
         }
     }
 
